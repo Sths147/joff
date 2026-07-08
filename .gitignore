@@ -1,0 +1,4 @@
+.env
+jo_raw.json
+data/
+__pycache__/
