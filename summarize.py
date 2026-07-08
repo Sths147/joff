@@ -1,12 +1,12 @@
-"""Résumé du Journal Officiel via l'API Mistral (tier gratuit).
+"""Summarize the Journal Officiel via the Mistral API (free tier).
 
-Usage :
-    python3 summarize.py                     # résumé global du JO (à partir des titres)
-    python3 summarize.py "santé"             # résumé thématique (recherche vectorielle + résumé)
-    python3 summarize.py -k 15 "écologie"    # nombre de chunks passés au LLM
+Usage:
+    python3 summarize.py                     # global summary of the JO (from the titles)
+    python3 summarize.py "health"            # thematic summary (vector search + summary)
+    python3 summarize.py -k 15 "ecology"     # number of chunks passed to the LLM
 
-Clé API : MISTRAL_API_KEY dans le .env (générée sur https://console.mistral.ai,
-plan gratuit « Experiment »).
+API key: MISTRAL_API_KEY in the .env (generated on https://console.mistral.ai,
+free "Experiment" plan).
 """
 
 import glob
@@ -29,8 +29,8 @@ def get_api_key():
     key = os.environ.get("MISTRAL_API_KEY")
     if not key:
         sys.exit(
-            "MISTRAL_API_KEY manquante dans le .env.\n"
-            "Créer une clé (gratuit) sur https://console.mistral.ai → API Keys."
+            "MISTRAL_API_KEY missing from the .env.\n"
+            "Create a key (free) on https://console.mistral.ai → API Keys."
         )
     return key
 
@@ -50,7 +50,7 @@ def call_mistral(api_key, system, user):
         timeout=120,
     )
     if resp.status_code >= 400:
-        sys.exit(f"Erreur Mistral {resp.status_code} :\n{resp.text[:1000]}")
+        sys.exit(f"Mistral error {resp.status_code}:\n{resp.text[:1000]}")
     return resp.json()["choices"][0]["message"]["content"]
 
 
@@ -59,12 +59,12 @@ def latest_day_dir():
         d for d in glob.glob(os.path.join(DATA_DIR, "*")) if os.path.isdir(d) and "index" not in d
     )
     if not days:
-        sys.exit("Aucune donnée dans data/ — lancer d'abord fetch_texts.py")
+        sys.exit("No data in data/ — run fetch_texts.py first")
     return days[-1]
 
 
 def summarize_day(api_key):
-    """Résumé global du dernier JO téléchargé, à partir des titres du sommaire."""
+    """Global summary of the latest downloaded JO, from the table-of-contents titles."""
     day_dir = latest_day_dir()
     date = os.path.basename(day_dir)
     docs = []
@@ -74,22 +74,22 @@ def summarize_day(api_key):
         docs.append(f"- [{d.get('nature')}] {d['titre']}")
 
     system = (
-        "Tu es un assistant juridique qui résume le Journal Officiel de la République "
-        "française pour un lecteur pressé. Tu réponds en français, de façon structurée."
+        "You are a legal assistant who summarizes the Journal Officiel of the French "
+        "Republic for a reader in a hurry. You answer in English, in a structured way."
     )
     user = (
-        f"Voici les titres des {len(docs)} textes publiés au JO du {date} :\n\n"
+        f"Here are the titles of the {len(docs)} texts published in the JO of {date}:\n\n"
         + "\n".join(docs)
-        + "\n\nFais un résumé thématique de ce JO en quelques sections (ex. santé, "
-        "nominations, économie...). Pour chaque thème, 1 à 3 phrases sur l'essentiel. "
-        "Termine par les 3 textes qui te semblent avoir le plus d'impact pour le grand public."
+        + "\n\nWrite a thematic summary of this JO in a few sections (e.g. health, "
+        "appointments, economy...). For each theme, 1 to 3 sentences on the essentials. "
+        "End with the 3 texts that seem to have the most impact on the general public."
     )
-    print(f"Résumé du JO du {date} ({len(docs)} textes) via {MISTRAL_MODEL}...\n")
+    print(f"Summary of the JO of {date} ({len(docs)} texts) via {MISTRAL_MODEL}...\n")
     print(call_mistral(api_key, system, user))
 
 
 def summarize_theme(api_key, query, k):
-    """Recherche vectorielle sur le thème puis résumé des chunks retenus."""
+    """Vector search on the topic, then summary of the selected chunks."""
     import numpy as np
     from sentence_transformers import SentenceTransformer
 
@@ -100,26 +100,26 @@ def summarize_theme(api_key, query, k):
     q = model.encode([f"query: {query}"], normalize_embeddings=True)[0]
     top = np.argsort(embeddings @ q)[::-1][:k]
 
-    extraits = []
+    excerpts = []
     for idx in top:
         c = chunks[idx]
-        extraits.append(
+        excerpts.append(
             f"### {c['doc_id']} [{c.get('nature')}] {c['titre']}\n{c['texte'][:1500]}"
         )
 
     system = (
-        "Tu es un assistant juridique qui analyse des extraits du Journal Officiel "
-        "de la République française. Tu réponds en français. Les extraits proviennent "
-        "d'une recherche sémantique : certains peuvent être hors sujet — ignore-les."
+        "You are a legal assistant who analyzes excerpts from the Journal Officiel "
+        "of the French Republic. You answer in English. The excerpts come from a "
+        "semantic search: some may be off-topic — ignore them."
     )
     user = (
-        f"Sujet demandé : « {query} »\n\n"
-        f"Voici {len(extraits)} extraits du JO sélectionnés automatiquement :\n\n"
-        + "\n\n".join(extraits)
-        + "\n\nRésume ce que le JO contient sur ce sujet. Cite l'identifiant JORFTEXT "
-        "des textes que tu mentionnes. Si aucun extrait n'est réellement pertinent, dis-le."
+        f'Requested topic: "{query}"\n\n'
+        f"Here are {len(excerpts)} automatically selected excerpts from the JO:\n\n"
+        + "\n\n".join(excerpts)
+        + "\n\nSummarize what the JO contains on this topic. Cite the JORFTEXT "
+        "identifier of the texts you mention. If no excerpt is actually relevant, say so."
     )
-    print(f"Recherche « {query} » ({len(extraits)} extraits) → résumé via {MISTRAL_MODEL}...\n")
+    print(f'Search "{query}" ({len(excerpts)} excerpts) → summary via {MISTRAL_MODEL}...\n')
     print(call_mistral(api_key, system, user))
 
 

@@ -1,12 +1,12 @@
-"""Récupère le texte intégral des textes du JO du jour via POST /consult/jorf.
+"""Fetch the full text of the day's JO texts via POST /consult/jorf.
 
-Usage :
-    python3 fetch_texts.py                # textes du JO du jour
-    python3 fetch_texts.py 2026-07-01     # JO d'une date donnée
-    python3 fetch_texts.py --last         # dernier JO paru
-    python3 fetch_texts.py --limit 5      # ne récupérer que les N premiers (test)
+Usage:
+    python3 fetch_texts.py                # texts of today's JO
+    python3 fetch_texts.py 2026-07-01     # JO for a given date
+    python3 fetch_texts.py --last         # latest published JO
+    python3 fetch_texts.py --limit 5      # only fetch the first N (testing)
 
-Sortie : data/<date>/JORFTEXT....json (un fichier par texte, avec le texte brut extrait).
+Output: data/<date>/JORFTEXT....json (one file per text, with the extracted plain text).
 """
 
 import datetime
@@ -46,7 +46,7 @@ def html_to_text(html):
 
 
 def extract_plain_text(node, out=None):
-    """Collecte récursivement les champs de contenu (HTML) de la réponse /consult/jorf."""
+    """Recursively collect the (HTML) content fields from the /consult/jorf response."""
     if out is None:
         out = []
     if isinstance(node, dict):
@@ -87,23 +87,23 @@ def main():
     data, label = get_jo_container(token, date)
     texts = extract_texts(data)
     if not texts:
-        sys.exit(f"Aucun texte dans le sommaire pour {label}.")
+        sys.exit(f"No text in the table of contents for {label}.")
     if limit:
         texts = texts[:limit]
 
     day_dir = os.path.join(DATA_DIR, str(date) if date else label.replace("/", "-"))
     os.makedirs(day_dir, exist_ok=True)
 
-    print(f"{label} : récupération de {len(texts)} textes vers {day_dir}")
+    print(f"{label}: fetching {len(texts)} texts into {day_dir}")
     for i, t in enumerate(texts, 1):
         out_path = os.path.join(day_dir, f"{t['id']}.json")
         if os.path.exists(out_path):
-            print(f"{i:3}/{len(texts)} {t['id']} (déjà présent)")
+            print(f"{i:3}/{len(texts)} {t['id']} (already present)")
             continue
         try:
             raw = fetch_text(token, t["id"])
         except SystemExit as e:
-            print(f"{i:3}/{len(texts)} {t['id']} ERREUR : {e}")
+            print(f"{i:3}/{len(texts)} {t['id']} ERROR: {e}")
             continue
         plain = "\n\n".join(extract_plain_text(raw))
         record = {
@@ -115,10 +115,10 @@ def main():
         }
         with open(out_path, "w") as f:
             json.dump(record, f, ensure_ascii=False, indent=2)
-        print(f"{i:3}/{len(texts)} {t['id']} ({len(plain)} caractères)")
-        time.sleep(0.2)  # rester sous les quotas PISTE
+        print(f"{i:3}/{len(texts)} {t['id']} ({len(plain)} characters)")
+        time.sleep(0.2)  # stay under the PISTE rate limits
 
-    print(f"\nTerminé. Fichiers dans {day_dir}")
+    print(f"\nDone. Files in {day_dir}")
 
 
 if __name__ == "__main__":

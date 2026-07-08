@@ -1,11 +1,11 @@
-"""Vectorise les textes du JO récupérés par fetch_texts.py.
+"""Vectorize the JO texts fetched by fetch_texts.py.
 
-Découpe chaque texte en morceaux (~1200 caractères), les vectorise avec un
-modèle d'embeddings multilingue local (intfloat/multilingual-e5-small), et
-stocke l'index dans data/index/ (embeddings.npy + chunks.jsonl).
+Splits each text into chunks (~1200 characters), vectorizes them with a local
+multilingual embedding model (intfloat/multilingual-e5-small), and stores the
+index in data/index/ (embeddings.npy + chunks.jsonl).
 
-Usage :
-    python3 vectorize.py          # (re)construit l'index depuis tout data/
+Usage:
+    python3 vectorize.py          # (re)builds the index from all of data/
 """
 
 import glob
@@ -19,12 +19,12 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 INDEX_DIR = os.path.join(DATA_DIR, "index")
 MODEL_NAME = "intfloat/multilingual-e5-small"
-CHUNK_SIZE = 1200  # caractères
+CHUNK_SIZE = 1200  # characters
 CHUNK_OVERLAP = 200
 
 
 def chunk_text(text, size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
-    """Découpe en morceaux d'environ `size` caractères, en coupant sur les paragraphes."""
+    """Split into pieces of roughly `size` characters, breaking on paragraphs."""
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
     chunks, current = [], ""
     for p in paragraphs:
@@ -34,7 +34,7 @@ def chunk_text(text, size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
         current += p + "\n\n"
     if current.strip():
         chunks.append(current.strip())
-    # paragraphe unique plus long que size : découpe brute
+    # single paragraph longer than size: hard split
     final = []
     for c in chunks:
         while len(c) > size * 2:
@@ -55,7 +55,7 @@ def load_documents():
 def main():
     docs = load_documents()
     if not docs:
-        raise SystemExit("Aucun texte dans data/ — lancer d'abord fetch_texts.py")
+        raise SystemExit("No text in data/ — run fetch_texts.py first")
 
     chunks = []
     for doc in docs:
@@ -75,10 +75,10 @@ def main():
             )
 
     print(f"{len(docs)} documents → {len(chunks)} chunks")
-    print(f"Chargement du modèle {MODEL_NAME}...")
+    print(f"Loading model {MODEL_NAME}...")
     model = SentenceTransformer(MODEL_NAME)
 
-    # e5 attend le préfixe "passage: " pour les documents indexés
+    # e5 expects the "passage: " prefix for indexed documents
     inputs = [f"passage: {c['titre']}\n{c['texte']}" for c in chunks]
     embeddings = model.encode(
         inputs, normalize_embeddings=True, show_progress_bar=True, batch_size=32
@@ -90,7 +90,7 @@ def main():
         for c in chunks:
             f.write(json.dumps(c, ensure_ascii=False) + "\n")
 
-    print(f"Index écrit dans {INDEX_DIR} ({embeddings.shape[0]} vecteurs, dim {embeddings.shape[1]})")
+    print(f"Index written to {INDEX_DIR} ({embeddings.shape[0]} vectors, dim {embeddings.shape[1]})")
 
 
 if __name__ == "__main__":
