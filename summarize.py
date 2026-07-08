@@ -4,6 +4,7 @@ Usage:
     python3 summarize.py                     # global summary of the JO (from the titles)
     python3 summarize.py "health"            # thematic summary (vector search + summary)
     python3 summarize.py -k 15 "ecology"     # number of chunks passed to the LLM
+    python3 summarize.py -s 0.85 "health"    # minimum similarity score (default 0.83)
 
 API key: MISTRAL_API_KEY in the .env (generated on https://console.mistral.ai,
 free "Experiment" plan).
@@ -88,7 +89,7 @@ def summarize_day(api_key):
     print(call_mistral(api_key, system, user))
 
 
-def summarize_theme(api_key, query, k):
+def summarize_theme(api_key, query, k, min_score):
     """Vector search on the topic, then summary of the selected chunks."""
     import numpy as np
     from sentence_transformers import SentenceTransformer
@@ -98,7 +99,15 @@ def summarize_theme(api_key, query, k):
     embeddings, chunks = load_index()
     model = SentenceTransformer(MODEL_NAME)
     q = model.encode([f"query: {query}"], normalize_embeddings=True)[0]
-    top = np.argsort(embeddings @ q)[::-1][:k]
+    scores = embeddings @ q
+    top = [idx for idx in np.argsort(scores)[::-1][:k] if scores[idx] >= min_score]
+    if not top:
+        best = scores.max() if len(scores) else 0.0
+        sys.exit(
+            f'No excerpt reaches the minimum score {min_score:.2f} for "{query}" '
+            f"(best match: {best:.2f}) — the indexed JO probably contains nothing "
+            "on this topic. Lower the threshold with -s to force a summary."
+        )
 
     excerpts = []
     for idx in top:
@@ -130,10 +139,17 @@ def main():
         i = args.index("-k")
         k = int(args[i + 1])
         del args[i : i + 2]
+    # e5 compresses cosine scores into a narrow band: on this index, nonsense
+    # queries score ~0.80-0.83 and relevant ones ~0.835+, hence the tight default.
+    min_score = 0.83
+    if "-s" in args:
+        i = args.index("-s")
+        min_score = float(args[i + 1])
+        del args[i : i + 2]
 
     api_key = get_api_key()
     if args:
-        summarize_theme(api_key, " ".join(args), k)
+        summarize_theme(api_key, " ".join(args), k, min_score)
     else:
         summarize_day(api_key)
 
