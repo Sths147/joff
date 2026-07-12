@@ -1,0 +1,4 @@
+.env
+jo_raw.json
+__pycache__/
+.pytest_cache/
