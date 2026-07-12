@@ -17,6 +17,7 @@ import sys
 import time
 from html.parser import HTMLParser
 
+from config import DATA_DIR
 from dl_journal import (
     extract_texts,
     get_jo_container,
@@ -25,8 +26,7 @@ from dl_journal import (
     load_credentials,
     api_post,
 )
-
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+from errors import PipelineError
 
 
 class _TextExtractor(HTMLParser):
@@ -67,31 +67,14 @@ def fetch_text(token, text_id):
     return api_post(token, "/consult/jorf", {"textCid": text_id})
 
 
-def main():
-    args = sys.argv[1:]
-    date = datetime.date.today()
-    limit = None
-    if "--limit" in args:
-        i = args.index("--limit")
-        limit = int(args[i + 1])
-        del args[i : i + 2]
-    if "--last" in args:
-        date = None
-    elif args:
-        date = datetime.date.fromisoformat(args[0])
+def day_dir_for(date, label):
+    return os.path.join(DATA_DIR, str(date) if date else label.replace("/", "-"))
 
-    client_id, client_secret = load_credentials()
-    init_urls()
-    token = get_token(client_id, client_secret)
 
-    data, label = get_jo_container(token, date)
-    texts = extract_texts(data)
-    if not texts:
-        sys.exit(f"No text in the table of contents for {label}.")
-    if limit:
-        texts = texts[:limit]
-
-    day_dir = os.path.join(DATA_DIR, str(date) if date else label.replace("/", "-"))
+def fetch_all_texts(token, texts, label, date):
+    """Fetch the full text of each entry in `texts`, writing one JSON file per
+    text under data/<day>/. Returns the day directory path."""
+    day_dir = day_dir_for(date, label)
     os.makedirs(day_dir, exist_ok=True)
 
     print(f"{label}: fetching {len(texts)} texts into {day_dir}")
@@ -102,7 +85,7 @@ def main():
             continue
         try:
             raw = fetch_text(token, t["id"])
-        except SystemExit as e:
+        except PipelineError as e:
             print(f"{i:3}/{len(texts)} {t['id']} ERROR: {e}")
             continue
         plain = "\n\n".join(extract_plain_text(raw))
@@ -117,6 +100,38 @@ def main():
             json.dump(record, f, ensure_ascii=False, indent=2)
         print(f"{i:3}/{len(texts)} {t['id']} ({len(plain)} characters)")
         time.sleep(0.2)  # stay under the PISTE rate limits
+
+    return day_dir
+
+
+def main():
+    args = sys.argv[1:]
+    date = datetime.date.today()
+    limit = None
+    if "--limit" in args:
+        i = args.index("--limit")
+        limit = int(args[i + 1])
+        del args[i : i + 2]
+    if "--last" in args:
+        date = None
+    elif args:
+        date = datetime.date.fromisoformat(args[0])
+
+    try:
+        client_id, client_secret = load_credentials()
+        init_urls()
+        token = get_token(client_id, client_secret)
+
+        data, label = get_jo_container(token, date)
+        texts = extract_texts(data)
+        if not texts:
+            raise PipelineError(f"No text in the table of contents for {label}.", status=502)
+        if limit:
+            texts = texts[:limit]
+
+        day_dir = fetch_all_texts(token, texts, label, date)
+    except PipelineError as e:
+        sys.exit(str(e))
 
     print(f"\nDone. Files in {day_dir}")
 

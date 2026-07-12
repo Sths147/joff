@@ -11,13 +11,14 @@ Usage:
 import glob
 import json
 import os
+import sys
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "data")
-INDEX_DIR = os.path.join(DATA_DIR, "index")
+from config import DATA_DIR, INDEX_DIR
+from errors import PipelineError
+
 MODEL_NAME = "intfloat/multilingual-e5-small"
 CHUNK_SIZE = 1200  # characters
 CHUNK_OVERLAP = 200
@@ -52,10 +53,11 @@ def load_documents():
     return docs
 
 
-def main():
+def build_index():
+    """(Re)build the vector index from all of data/. Returns (n_docs, n_chunks)."""
     docs = load_documents()
     if not docs:
-        raise SystemExit("No text in data/ — run fetch_texts.py first")
+        raise PipelineError("No text in data/ — run fetch_texts.py first", status=404)
 
     chunks = []
     for doc in docs:
@@ -91,6 +93,14 @@ def main():
             f.write(json.dumps(c, ensure_ascii=False) + "\n")
 
     print(f"Index written to {INDEX_DIR} ({embeddings.shape[0]} vectors, dim {embeddings.shape[1]})")
+    return len(docs), len(chunks)
+
+
+def main():
+    try:
+        build_index()
+    except PipelineError as e:
+        sys.exit(str(e))
 
 
 if __name__ == "__main__":

@@ -12,8 +12,9 @@ import sys
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-INDEX_DIR = os.path.join(BASE_DIR, "data", "index")
+from config import INDEX_DIR
+from errors import PipelineError
+
 MODEL_NAME = "intfloat/multilingual-e5-small"
 
 
@@ -21,7 +22,7 @@ def load_index():
     emb_path = os.path.join(INDEX_DIR, "embeddings.npy")
     chunks_path = os.path.join(INDEX_DIR, "chunks.jsonl")
     if not (os.path.exists(emb_path) and os.path.exists(chunks_path)):
-        raise SystemExit("Index missing — run vectorize.py first")
+        raise PipelineError("Index missing — run vectorize.py first", status=404)
     embeddings = np.load(emb_path)
     with open(chunks_path) as f:
         chunks = [json.loads(line) for line in f]
@@ -39,7 +40,10 @@ def main():
         raise SystemExit('Usage: python3 search.py [-k N] "your query"')
     query = " ".join(args)
 
-    embeddings, chunks = load_index()
+    try:
+        embeddings, chunks = load_index()
+    except PipelineError as e:
+        sys.exit(str(e))
     model = SentenceTransformer(MODEL_NAME)
     # e5 expects the "query: " prefix for queries
     q = model.encode([f"query: {query}"], normalize_embeddings=True)[0]

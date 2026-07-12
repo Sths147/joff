@@ -13,12 +13,18 @@ import datetime
 import json
 import os
 import sys
+import time
 
 import requests
+
+from errors import PipelineError
 
 # Set by init_urls() after reading the .env (PISTE_ENV=sandbox for the test environment)
 OAUTH_URL = None
 API_BASE = None
+
+# client_id -> {"access_token": str, "expires_at": float (time.monotonic())}
+_token_cache = {}
 
 
 def init_urls():
@@ -49,7 +55,7 @@ def load_credentials():
     client_id = os.environ.get("PISTE_CLIENT_ID")
     client_secret = os.environ.get("PISTE_CLIENT_SECRET")
     if not client_id or not client_secret:
-        sys.exit(
+        raise PipelineError(
             "Missing credentials: set PISTE_CLIENT_ID and PISTE_CLIENT_SECRET\n"
             "(environment variables or .env file — see .env.example).\n"
             "They are generated on https://piste.gouv.fr after subscribing to the Légifrance API."
@@ -58,6 +64,16 @@ def load_credentials():
 
 
 def get_token(client_id, client_secret):
+    """Get an OAuth access token, reusing a cached one until shortly before it expires.
+
+    Avoids paying for a fresh OAuth round-trip on every "Fetch" click — most clicks
+    just confirm the latest JO is already cached, so the token is the only thing
+    otherwise fetched fresh every time.
+    """
+    cached = _token_cache.get(client_id)
+    if cached and cached["expires_at"] > time.monotonic():
+        return cached["access_token"]
+
     resp = requests.post(
         OAUTH_URL,
         data={
@@ -69,12 +85,20 @@ def get_token(client_id, client_secret):
         timeout=30,
     )
     if resp.status_code >= 400:
-        sys.exit(
+        raise PipelineError(
             f"OAuth error {resp.status_code}:\n{resp.text[:2000]}\n\n"
             "Check that the client_id/client_secret match the target environment "
-            f"({OAUTH_URL}) and that the application is subscribed to the Légifrance API."
+            f"({OAUTH_URL}) and that the application is subscribed to the Légifrance API.",
+            status=502,
         )
-    return resp.json()["access_token"]
+    body = resp.json()
+    token = body["access_token"]
+    expires_in = body.get("expires_in", 0)
+    _token_cache[client_id] = {
+        "access_token": token,
+        "expires_at": time.monotonic() + expires_in - 30,  # renew a bit early
+    }
+    return token
 
 
 def api_post(token, endpoint, payload):
@@ -89,27 +113,66 @@ def api_post(token, endpoint, payload):
         timeout=60,
     )
     if resp.status_code >= 400:
-        sys.exit(f"API error {resp.status_code} on {endpoint}:\n{resp.text[:2000]}")
+        raise PipelineError(
+            f"API error {resp.status_code} on {endpoint}:\n{resp.text[:2000]}", status=502
+        )
     return resp.json()
 
 
 def get_jo_container(token, date=None):
-    """Fetch the JORF container (table of contents) for a date, or the latest published one."""
+    """Fetch the JORF container (table of contents) for a date, or the latest published one.
+
+    For the latest-published case, /consult/lastNJo's listing entry already *is*
+    the full container (same publication date, same texts, verified against
+    /consult/jorfCont) — so there's no second call to make here.
+    """
     if date is not None:
         millis = int(
             datetime.datetime.combine(date, datetime.time(12)).timestamp() * 1000
         )
         return api_post(token, "/consult/jorfCont", {"date": millis}), str(date)
 
-    # Latest published JO: list the most recent containers then load the first one
     last = api_post(token, "/consult/lastNJo", {"nbElement": 1})
     containers = last.get("containers") or []
     if not containers:
-        sys.exit(f"No JO container returned by /consult/lastNJo:\n{json.dumps(last)[:1000]}")
+        raise PipelineError(
+            f"No JO container returned by /consult/lastNJo:\n{json.dumps(last)[:1000]}",
+            status=502,
+        )
     cont = containers[0]
-    cont_id = cont.get("id")
-    label = cont.get("titre") or cont_id
-    return api_post(token, "/consult/jorfCont", {"id": cont_id}), label
+    label = cont.get("titre") or cont.get("id")
+    return cont, label
+
+
+def extract_jo_date(node):
+    """Recursively find the container's publication date (`datePubli`, epoch
+    milliseconds) and return it as an ISO date string (e.g. "2026-07-09").
+
+    Used as the canonical id for a JO edition regardless of whether it was
+    fetched by explicit date or via --last, whose `label` is a free-form
+    string like "JORF n°0159 du 9 juillet 2026" and not safe to use as a key.
+    """
+    millis = _find_date_publi(node)
+    if millis is None:
+        return None
+    return str(datetime.datetime.fromtimestamp(millis / 1000, tz=datetime.timezone.utc).date())
+
+
+def _find_date_publi(node):
+    if isinstance(node, dict):
+        value = node.get("datePubli")
+        if isinstance(value, (int, float)):
+            return value
+        for v in node.values():
+            found = _find_date_publi(v)
+            if found is not None:
+                return found
+    elif isinstance(node, list):
+        for item in node:
+            found = _find_date_publi(item)
+            if found is not None:
+                return found
+    return None
 
 
 def extract_texts(node, seen=None, out=None):
@@ -138,13 +201,16 @@ def main():
     elif args:
         date = datetime.date.fromisoformat(args[0])
 
-    client_id, client_secret = load_credentials()
-    init_urls()
-    print(f"Getting OAuth token ({OAUTH_URL})...")
-    token = get_token(client_id, client_secret)
+    try:
+        client_id, client_secret = load_credentials()
+        init_urls()
+        print(f"Getting OAuth token ({OAUTH_URL})...")
+        token = get_token(client_id, client_secret)
 
-    print(f"Fetching the JO ({'latest published' if date is None else date})...")
-    data, label = get_jo_container(token, date)
+        print(f"Fetching the JO ({'latest published' if date is None else date})...")
+        data, label = get_jo_container(token, date)
+    except PipelineError as e:
+        sys.exit(str(e))
 
     raw_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "jo_raw.json")
     with open(raw_path, "w") as f:

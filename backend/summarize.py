@@ -17,10 +17,10 @@ import sys
 
 import requests
 
+from config import DATA_DIR
 from dl_journal import load_env
+from errors import PipelineError
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "data")
 MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
 MISTRAL_MODEL = os.environ.get("MISTRAL_MODEL", "mistral-small-latest")
 
@@ -29,7 +29,7 @@ def get_api_key():
     load_env()
     key = os.environ.get("MISTRAL_API_KEY")
     if not key:
-        sys.exit(
+        raise PipelineError(
             "MISTRAL_API_KEY missing from the .env.\n"
             "Create a key (free) on https://console.mistral.ai → API Keys."
         )
@@ -51,7 +51,7 @@ def call_mistral(api_key, system, user):
         timeout=120,
     )
     if resp.status_code >= 400:
-        sys.exit(f"Mistral error {resp.status_code}:\n{resp.text[:1000]}")
+        raise PipelineError(f"Mistral error {resp.status_code}:\n{resp.text[:1000]}", status=502)
     return resp.json()["choices"][0]["message"]["content"]
 
 
@@ -60,7 +60,7 @@ def latest_day_dir():
         d for d in glob.glob(os.path.join(DATA_DIR, "*")) if os.path.isdir(d) and "index" not in d
     )
     if not days:
-        sys.exit("No data in data/ — run fetch_texts.py first")
+        raise PipelineError("No data in data/ — run fetch_texts.py first", status=404)
     return days[-1]
 
 
@@ -76,7 +76,7 @@ def summarize_day(api_key):
 
     system = (
         "You are a legal assistant who summarizes the Journal Officiel of the French "
-        "Republic for a reader in a hurry. You answer in English, in a structured way."
+        "Republic for a reader in a hurry. You answer in French, in a structured way."
     )
     user = (
         f"Here are the titles of the {len(docs)} texts published in the JO of {date}:\n\n"
@@ -86,7 +86,7 @@ def summarize_day(api_key):
         "End with the 3 texts that seem to have the most impact on the general public."
     )
     print(f"Summary of the JO of {date} ({len(docs)} texts) via {MISTRAL_MODEL}...\n")
-    print(call_mistral(api_key, system, user))
+    return call_mistral(api_key, system, user)
 
 
 def summarize_theme(api_key, query, k, min_score):
@@ -103,10 +103,11 @@ def summarize_theme(api_key, query, k, min_score):
     top = [idx for idx in np.argsort(scores)[::-1][:k] if scores[idx] >= min_score]
     if not top:
         best = scores.max() if len(scores) else 0.0
-        sys.exit(
+        raise PipelineError(
             f'No excerpt reaches the minimum score {min_score:.2f} for "{query}" '
             f"(best match: {best:.2f}) — the indexed JO probably contains nothing "
-            "on this topic. Lower the threshold with -s to force a summary."
+            "on this topic. Lower the threshold with -s to force a summary.",
+            status=422,
         )
 
     excerpts = []
@@ -118,7 +119,7 @@ def summarize_theme(api_key, query, k, min_score):
 
     system = (
         "You are a legal assistant who analyzes excerpts from the Journal Officiel "
-        "of the French Republic. You answer in English. The excerpts come from a "
+        "of the French Republic. You answer in French. The excerpts come from a "
         "semantic search: some may be off-topic — ignore them."
     )
     user = (
@@ -129,7 +130,7 @@ def summarize_theme(api_key, query, k, min_score):
         "identifier of the texts you mention. If no excerpt is actually relevant, say so."
     )
     print(f'Search "{query}" ({len(excerpts)} excerpts) → summary via {MISTRAL_MODEL}...\n')
-    print(call_mistral(api_key, system, user))
+    return call_mistral(api_key, system, user)
 
 
 def main():
@@ -147,11 +148,15 @@ def main():
         min_score = float(args[i + 1])
         del args[i : i + 2]
 
-    api_key = get_api_key()
-    if args:
-        summarize_theme(api_key, " ".join(args), k, min_score)
-    else:
-        summarize_day(api_key)
+    try:
+        api_key = get_api_key()
+        if args:
+            summary = summarize_theme(api_key, " ".join(args), k, min_score)
+        else:
+            summary = summarize_day(api_key)
+    except PipelineError as e:
+        sys.exit(str(e))
+    print(summary)
 
 
 if __name__ == "__main__":
