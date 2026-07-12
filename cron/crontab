@@ -1,0 +1,2 @@
+# Fetch the latest JO every day at 8:00 (Europe/Paris, set via TZ in docker-compose.yml)
+0 8 * * * wget -q -O- --post-data='' http://backend:5000/jo/latest >> /var/log/cron.log 2>&1
