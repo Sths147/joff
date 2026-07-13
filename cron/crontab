@@ -1,2 +1,5 @@
-# Fetch the latest JO every day at 8:00 (Europe/Paris, set via TZ in docker-compose.yml)
-0 8 * * * wget -q -O- --post-data='' http://backend:5000/jo/latest >> /var/log/cron.log 2>&1
+# Fetch the latest JO every day at 8:00 (Europe/Paris, set via TZ in docker-compose.yml).
+# X-Cron-Token authenticates this as the cron job instead of a logged-in user
+# (see backend/auth.py require_auth_or_cron) — $CRON_TOKEN comes from the
+# cron service's env_file in docker-compose.yml.
+0 8 * * * wget -q -O- --header="X-Cron-Token: $CRON_TOKEN" --post-data='' http://backend:5000/jo/latest >> /var/log/cron.log 2>&1

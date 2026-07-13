@@ -1,8 +1,11 @@
 """MongoDB-backed record of already-downloaded JO editions, keyed by date,
-and of the single-user reader profile used to personalize summaries.
+and of per-user reader profiles used to personalize summaries.
 
 Lets pipeline.fetch_latest_jo() skip re-fetching every text and rebuilding
 the vector index when the latest published JO has already been processed.
+
+Profiles are keyed by user_id (the Postgres users.id from users_db.py, passed
+through as a string) — this module treats it as an opaque key.
 """
 
 from pymongo import MongoClient
@@ -10,8 +13,6 @@ from pymongo import MongoClient
 from config import MONGO_URI
 
 _client = None
-
-PROFILE_ID = "me"
 
 
 def get_collection(name):
@@ -33,14 +34,14 @@ def save_jo(date, label, texts):
     )
 
 
-def get_profile():
-    """Return the saved reader bio, or None if none has been set yet."""
-    doc = get_collection("profile").find_one({"_id": PROFILE_ID})
+def get_profile(user_id):
+    """Return the saved reader bio for `user_id`, or None if none has been set yet."""
+    doc = get_collection("profile").find_one({"_id": user_id})
     return doc["bio"] if doc else None
 
 
-def save_profile(bio):
-    """Upsert the single reader profile."""
+def save_profile(user_id, bio):
+    """Upsert the reader profile for `user_id`."""
     get_collection("profile").replace_one(
-        {"_id": PROFILE_ID}, {"_id": PROFILE_ID, "bio": bio}, upsert=True
+        {"_id": user_id}, {"_id": user_id, "bio": bio}, upsert=True
     )

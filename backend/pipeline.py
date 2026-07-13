@@ -5,7 +5,13 @@ operating on the latest published JO (never a specific date) and reading from
 already-vectorized data on disk for summaries — see ADR 0004.
 """
 
+import time
+
+from psycopg2.errors import UniqueViolation
+
 import storage
+import users_db
+from auth import hash_password, verify_password
 from dl_journal import (
     extract_jo_date,
     extract_texts,
@@ -60,9 +66,9 @@ def thematic_summary(topic, k=10, min_score=0.83):
     return summarize_theme(api_key, topic, k, min_score)
 
 
-def personalized_summary():
-    """Global summary tailored to the saved reader profile."""
-    bio = storage.get_profile()
+def personalized_summary(user_id):
+    """Global summary tailored to the reader profile saved for `user_id`."""
+    bio = storage.get_profile(user_id)
     if not bio or not bio.strip():
         raise PipelineError(
             "No profile set — add a bio on the Profile page first.", status=400
@@ -71,10 +77,52 @@ def personalized_summary():
     return summarize_day(api_key, bio)
 
 
-def get_profile():
-    return storage.get_profile() or ""
+def get_profile(user_id):
+    return storage.get_profile(user_id) or ""
 
 
-def save_profile(bio):
-    storage.save_profile(bio)
+def save_profile(user_id, bio):
+    storage.save_profile(user_id, bio)
     return bio
+
+
+def _normalize_email(email):
+    email = (email or "").strip().lower()
+    if not email or "@" not in email:
+        raise PipelineError("Invalid email address.", status=400)
+    return email
+
+
+def register_user(email, password):
+    """Create a new account and return (user_id, normalized_email).
+
+    Raises PipelineError(409) on a duplicate email, PipelineError(400) on
+    invalid input.
+    """
+    email = _normalize_email(email)
+    if not password or len(password) < 8:
+        raise PipelineError("Password must be at least 8 characters.", status=400)
+    try:
+        user_id = users_db.create_user(email, hash_password(password))
+    except UniqueViolation:
+        raise PipelineError("An account with this email already exists.", status=409)
+    return user_id, email
+
+
+def login_user(email, password):
+    """Verify credentials and return (user_id, normalized_email).
+
+    Raises PipelineError(429) if the account is locked out from too many
+    recent failed attempts, PipelineError(401) on unknown email or wrong
+    password.
+    """
+    email = _normalize_email(email)
+    user = users_db.find_user_by_email(email)
+    if user and user["locked_until"] and user["locked_until"].timestamp() > time.time():
+        raise PipelineError("Too many attempts — try again later.", status=429)
+    if not user or not verify_password(password, user["password_hash"]):
+        if user:
+            users_db.record_failed_login(email)
+        raise PipelineError("Invalid email or password.", status=401)
+    users_db.reset_failed_attempts(email)
+    return user["id"], email

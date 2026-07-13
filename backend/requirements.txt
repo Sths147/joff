@@ -1,8 +1,9 @@
 flask
-flask-cors
 gunicorn
 requests
 numpy
 sentence-transformers
 pymongo
+psycopg2-binary
+PyJWT
 pytest
