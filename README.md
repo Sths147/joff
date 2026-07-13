@@ -1,6 +1,15 @@
 # joff
 
-Get the latest updates of the french law with this personal summarizer of the french Journal Officiel
+A personal summarizer of the French Journal Officiel (JO): fetches the latest official law
+publications, indexes them for semantic search, and produces LLM summaries in French.
+
+## What it does
+
+- Fetches the daily JO (the French law gazette) via the Légifrance API
+- Indexes texts for semantic search (local embeddings, no external vector DB)
+- Summarizes JO editions with an LLM (Mistral), globally or filtered to a topic
+- Personalizes summaries per user profile
+- Runs as a multi-user web app (login required), or as standalone CLI scripts
 
 ## Layout
 
@@ -8,7 +17,7 @@ Get the latest updates of the french law with this personal summarizer of the fr
 - `frontend/` — the web page, in Vue 3 + TypeScript.
 - `data/` — fetched JO texts and the vector index, shared by both CLI and web use. Not committed.
 
-## Web app (Docker)
+## Starting the server
 
 ```bash
 cp backend/.env.example backend/.env
@@ -17,31 +26,14 @@ cp backend/.env.example backend/.env
 docker compose up --build
 ```
 
-- App: https://localhost (nginx serves the frontend and proxies the API on the same origin;
-  it terminates TLS with a self-signed certificate, so your browser will warn about it until a
-  real one is in place — accept the warning to continue)
-
-Every route requires an account — register on first visit. Each user gets their own profile
-("Profile" tab) used to personalize summaries; the JO data itself (fetched texts, vector index)
-is shared across all accounts. See [ADR 0003](docs/adr/0003-python-backend-typescript-frontend.md)
-and [ADR 0004](docs/adr/0004-synchronous-fetch-no-job-queue.md) for the design decisions behind
-the pipeline split, and [ADR 0005](docs/adr/0005-no-auth-localhost-only.md) for why this used to
-be unauthenticated/localhost-only and why that changed.
-
-`data/` and the embedding model cache are Docker volumes, so `docker compose up --build` after
-a code change doesn't re-fetch the JO or re-download the model. Accounts live in a `postgres`
-Docker volume; the JO cache and per-user profiles live in a `mongo` one.
-
-### Local dev (hot reload)
-
-Rebuilding the Docker images on every change is slow. For day-to-day frontend/backend work, run
-just the databases in Docker and the app directly on the host instead:
+For local development with hot reload, instead run just the databases in Docker and the app
+directly on the host:
 
 ```bash
-docker compose up mongo postgres   # only the databases; backend/frontend run on the host below
+docker compose up mongo postgres
 
 cd backend
-export $(grep -v '^#' .env | xargs)   # backend reads its config from the environment, not .env directly
+export $(grep -v '^#' .env | xargs)   # backend reads config from the environment, not .env directly
 flask --app app run --port 5001
 
 # in a second terminal
@@ -49,27 +41,32 @@ cd frontend
 npm run dev
 ```
 
-- App: http://localhost:5173 — Vite's dev server, which proxies `/jo`, `/profile`, `/auth` to the
-  backend on `localhost:5001` (see `frontend/vite.config.ts`) so the browser only ever talks to
-  one origin, same as nginx does in the Docker stack.
-- `JWT_SECRET` must be set (it's one of the three secrets `.env.example` asks you to generate) —
-  the backend raises on first login/register if it's missing.
-- `COOKIE_SECURE` defaults to `false`, so the session cookie works over this plain-HTTP setup
-  without extra config; the Docker stack overrides it to `true` since nginx always terminates TLS
-  there.
+## Accessing it
 
-## CLI — fetching the JO via the Légifrance API (PISTE)
+- Docker: https://localhost (self-signed certificate — accept the browser warning to continue)
+- Local dev: http://localhost:5173
+
+Register an account on first visit — every route requires being logged in. Each user gets their
+own profile ("Profile" tab) for personalized summaries; the JO data itself (fetched texts, vector
+index) is shared across all accounts.
+
+`data/`, the model cache, accounts, and profiles persist across rebuilds in Docker volumes.
+`JWT_SECRET` must be set in `backend/.env` in both setups, or login/register will fail.
+
+See `docs/adr/` for the reasoning behind these setups.
+
+## CLI tools
+
+### Fetching the JO via the Légifrance API (PISTE)
 
 `backend/dl_journal.py` fetches the table of contents of the Journal Officiel (JORF) via the
 Légifrance API on PISTE (production by default, `PISTE_ENV=sandbox` for the test environment).
 
-### Prerequisites
+Prerequisites:
 
 1. An account on [piste.gouv.fr](https://piste.gouv.fr) with an application subscribed to the **Légifrance** API.
 2. Copy `backend/.env.example` to `backend/.env` and fill in the application's `client_id` / `client_secret`.
 3. Python 3 with `requests` (`pip install requests`), or `pip install -r backend/requirements.txt` for everything (Flask, sentence-transformers, pytest included).
-
-### Usage
 
 ```bash
 cd backend
@@ -85,7 +82,7 @@ The script:
 
 Note: the JO is not published every day — if today's date returns nothing, use `--last`.
 
-## Fetching the full text and semantic search
+### Fetching the full text and semantic search
 
 Additional prerequisite: `pip install sentence-transformers` (installs PyTorch, ~2 GB; the embedding model `intfloat/multilingual-e5-small`, ~470 MB, is downloaded on first run).
 
@@ -101,7 +98,7 @@ python3 search.py "price of reimbursed medicines"   # semantic search (top 5)
 - `vectorize.py` splits each text into chunks (~1200 characters), vectorizes them locally, and stores the index (numpy + jsonl) in `data/index/`.
 - `search.py` vectorizes the query and returns the closest chunks (cosine similarity).
 
-## LLM summary (Mistral API, free)
+### LLM summary (Mistral API, free)
 
 Prerequisite: a Mistral API key (free "Experiment" plan) created on [console.mistral.ai](https://console.mistral.ai), to be put in `backend/.env` (`MISTRAL_API_KEY=...`).
 
