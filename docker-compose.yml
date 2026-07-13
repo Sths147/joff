@@ -1,27 +1,50 @@
 services:
   backend:
     build: ./backend
-    ports:
-      - "127.0.0.1:5001:5000"
+    # No host port published — only reachable from other containers (nginx,
+    # cron) over the internal Docker network now that nginx is the sole
+    # public entry point (see frontend service).
     env_file:
       - ./backend/.env
     environment:
       - JOFF_DATA_DIR=/app/data
       - HF_HOME=/app/model_cache
       - MONGO_URI=mongodb://mongo:27017
+      - POSTGRES_HOST=postgres
+      - COOKIE_SECURE=true
     volumes:
       - ./data:/app/data
       - model_cache:/app/model_cache
     depends_on:
-      - mongo
+      mongo:
+        condition: service_started
+      postgres:
+        condition: service_healthy
 
   mongo:
     image: mongo:7
     volumes:
       - mongo_data:/data/db
 
+  postgres:
+    image: postgres:16-alpine
+    env_file:
+      - ./backend/.env
+    environment:
+      - POSTGRES_USER=joff
+      - POSTGRES_DB=joff
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U joff"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   cron:
     image: alpine:3.19
+    env_file:
+      - ./backend/.env
     environment:
       - TZ=Europe/Paris
     volumes:
@@ -32,15 +55,20 @@ services:
     command: sh -c "apk add --no-cache tzdata && crond -f -l 2"
 
   frontend:
-    build:
-      context: ./frontend
-      args:
-        VITE_API_BASE: http://localhost:5001
+    build: ./frontend
+    # The sole public entry point: nginx here terminates TLS (self-signed for
+    # now, see frontend/nginx.conf) and proxies backend routes through, so
+    # publish openly rather than 127.0.0.1-restricted like before.
     ports:
-      - "127.0.0.1:5173:80"
+      - "80:80"
+      - "443:443"
+    volumes:
+      - nginx_certs:/etc/nginx/certs
     depends_on:
       - backend
 
 volumes:
   model_cache:
   mongo_data:
+  postgres_data:
+  nginx_certs:
