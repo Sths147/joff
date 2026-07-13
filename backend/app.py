@@ -12,7 +12,13 @@ from flask_cors import CORS
 
 import jobs
 from errors import PipelineError
-from pipeline import global_summary, thematic_summary
+from pipeline import (
+    get_profile,
+    global_summary,
+    personalized_summary,
+    save_profile,
+    thematic_summary,
+)
 
 app = Flask(__name__)
 CORS(app)
@@ -41,10 +47,24 @@ def get_latest_jo_status():
 @app.get("/jo/latest/summary")
 def get_latest_summary():
     topic = request.args.get("topic")
+    personalized = request.args.get("personalized")
     if topic:
         k = request.args.get("k", default=10, type=int)
         min_score = request.args.get("min_score", default=0.83, type=float)
         summary = thematic_summary(topic, k, min_score)
+    elif personalized:
+        summary = personalized_summary()
     else:
         summary = global_summary()
     return jsonify({"summary": summary})
+
+
+@app.get("/profile")
+def get_profile_endpoint():
+    return jsonify({"bio": get_profile()})
+
+
+@app.put("/profile")
+def put_profile_endpoint():
+    bio = (request.get_json(silent=True) or {}).get("bio", "")
+    return jsonify({"bio": save_profile(bio)})

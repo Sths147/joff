@@ -1,12 +1,27 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import JoFetchPanel from './components/JoFetchPanel.vue'
 import JoTextList from './components/JoTextList.vue'
+import ProfileView from './components/ProfileView.vue'
 import SummaryPanel from './components/SummaryPanel.vue'
 import ThemeToggle from './components/ThemeToggle.vue'
 import { useJournalOfficiel } from './composables/useJournalOfficiel'
 
-const { loading, error, label, texts, summaryHtml, hasJo, fetchLatest, globalSummary, thematicSummary } =
-  useJournalOfficiel()
+type View = 'digest' | 'profile'
+const view = ref<View>('digest')
+
+const {
+  loading,
+  error,
+  label,
+  texts,
+  summaryHtml,
+  hasJo,
+  fetchLatest,
+  globalSummary,
+  thematicSummary,
+  personalizedSummary,
+} = useJournalOfficiel()
 </script>
 
 <template>
@@ -16,9 +31,17 @@ const { loading, error, label, texts, summaryHtml, hasJo, fetchLatest, globalSum
       <ThemeToggle />
     </div>
     <h1>Journal Officiel</h1>
+    <nav class="tabs">
+      <button class="tab" :class="{ active: view === 'digest' }" @click="view = 'digest'">
+        Digest
+      </button>
+      <button class="tab" :class="{ active: view === 'profile' }" @click="view = 'profile'">
+        Profile
+      </button>
+    </nav>
   </header>
 
-  <main>
+  <main v-if="view === 'digest'">
     <JoFetchPanel
       :fetching="loading === 'fetch'"
       :disabled="loading !== null"
@@ -34,8 +57,13 @@ const { loading, error, label, texts, summaryHtml, hasJo, fetchLatest, globalSum
         :summary-html="summaryHtml"
         @global="globalSummary"
         @thematic="thematicSummary"
+        @personalized="personalizedSummary"
       />
     </template>
+  </main>
+
+  <main v-else>
+    <ProfileView />
   </main>
 </template>
 
@@ -64,6 +92,39 @@ const { loading, error, label, texts, summaryHtml, hasJo, fetchLatest, globalSum
 .masthead h1 {
   font-size: 2.25rem;
   letter-spacing: -0.01em;
+}
+
+.tabs {
+  display: flex;
+  gap: 1.5rem;
+  margin-top: 1.25rem;
+}
+
+.tab {
+  padding: 0.25rem 0;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--color-text-soft);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.tab:hover {
+  color: var(--color-text);
+}
+
+.tab.active {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 main {

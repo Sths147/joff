@@ -1,6 +1,9 @@
 from unittest.mock import patch
 
-from pipeline import fetch_latest_jo
+import pytest
+
+from errors import PipelineError
+from pipeline import fetch_latest_jo, get_profile, personalized_summary, save_profile
 
 
 def _patched(**overrides):
@@ -64,3 +67,30 @@ def test_fetch_latest_jo_fetches_and_stores_when_new():
     mock_build.assert_called_once()
     mock_save.assert_called_once_with("2026-07-08", "JORF n°0158", p["extract_texts"])
     assert result == {"label": "JORF n°0158", "texts": p["extract_texts"]}
+
+
+def test_personalized_summary_uses_saved_bio():
+    with patch("pipeline.storage.get_profile", return_value="Lawyer in Lyon"), patch(
+        "pipeline.get_api_key", return_value="key"
+    ), patch("pipeline.summarize_day", return_value="résumé") as mock_summarize:
+        result = personalized_summary()
+    mock_summarize.assert_called_once_with("key", "Lawyer in Lyon")
+    assert result == "résumé"
+
+
+def test_personalized_summary_requires_a_profile():
+    with patch("pipeline.storage.get_profile", return_value=None):
+        with pytest.raises(PipelineError):
+            personalized_summary()
+
+
+def test_get_profile_defaults_to_empty_string():
+    with patch("pipeline.storage.get_profile", return_value=None):
+        assert get_profile() == ""
+
+
+def test_save_profile_delegates_to_storage():
+    with patch("pipeline.storage.save_profile") as mock_save:
+        result = save_profile("Lawyer in Lyon")
+    mock_save.assert_called_once_with("Lawyer in Lyon")
+    assert result == "Lawyer in Lyon"

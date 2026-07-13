@@ -83,3 +83,46 @@ def test_get_summary_below_similarity_floor(client):
     ):
         resp = client.get("/jo/latest/summary?topic=obscure")
     assert resp.status_code == 422
+
+
+def test_get_summary_personalized_when_requested(client):
+    with patch(
+        "app.personalized_summary", return_value="résumé personnalisé"
+    ) as mock_personalized, patch("app.global_summary") as mock_global:
+        resp = client.get("/jo/latest/summary?personalized=1")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"summary": "résumé personnalisé"}
+    mock_personalized.assert_called_once()
+    mock_global.assert_not_called()
+
+
+def test_get_summary_personalized_without_profile(client):
+    with patch(
+        "app.personalized_summary",
+        side_effect=PipelineError("No profile set", status=400),
+    ):
+        resp = client.get("/jo/latest/summary?personalized=1")
+    assert resp.status_code == 400
+    assert resp.get_json() == {"error": "No profile set"}
+
+
+def test_get_profile_returns_saved_bio(client):
+    with patch("app.get_profile", return_value="Lawyer in Lyon"):
+        resp = client.get("/profile")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"bio": "Lawyer in Lyon"}
+
+
+def test_put_profile_saves_bio(client):
+    with patch("app.save_profile", return_value="Lawyer in Lyon") as mock_save:
+        resp = client.put("/profile", json={"bio": "Lawyer in Lyon"})
+    assert resp.status_code == 200
+    assert resp.get_json() == {"bio": "Lawyer in Lyon"}
+    mock_save.assert_called_once_with("Lawyer in Lyon")
+
+
+def test_put_profile_defaults_to_empty_bio(client):
+    with patch("app.save_profile", return_value="") as mock_save:
+        resp = client.put("/profile", json={})
+    assert resp.status_code == 200
+    mock_save.assert_called_once_with("")

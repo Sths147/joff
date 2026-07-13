@@ -14,6 +14,38 @@ def test_find_jo_queries_by_date_id():
     storage._client = None
 
 
+def test_get_profile_returns_bio_when_set():
+    storage._client = None
+    fake_collection = MagicMock()
+    fake_collection.find_one.return_value = {"_id": "me", "bio": "Lawyer in Lyon"}
+    with patch("storage.MongoClient", return_value={"joff": {"profile": fake_collection}}):
+        result = storage.get_profile()
+    fake_collection.find_one.assert_called_once_with({"_id": "me"})
+    assert result == "Lawyer in Lyon"
+    storage._client = None
+
+
+def test_get_profile_returns_none_when_unset():
+    storage._client = None
+    fake_collection = MagicMock()
+    fake_collection.find_one.return_value = None
+    with patch("storage.MongoClient", return_value={"joff": {"profile": fake_collection}}):
+        result = storage.get_profile()
+    assert result is None
+    storage._client = None
+
+
+def test_save_profile_upserts_by_fixed_id():
+    storage._client = None
+    fake_collection = MagicMock()
+    with patch("storage.MongoClient", return_value={"joff": {"profile": fake_collection}}):
+        storage.save_profile("Lawyer in Lyon")
+    fake_collection.replace_one.assert_called_once_with(
+        {"_id": "me"}, {"_id": "me", "bio": "Lawyer in Lyon"}, upsert=True
+    )
+    storage._client = None
+
+
 def test_save_jo_upserts_by_date_id():
     storage._client = None
     fake_collection = MagicMock()

@@ -58,3 +58,23 @@ def thematic_summary(topic, k=10, min_score=0.83):
         raise PipelineError("Missing topic for thematic summary.", status=400)
     api_key = get_api_key()
     return summarize_theme(api_key, topic, k, min_score)
+
+
+def personalized_summary():
+    """Global summary tailored to the saved reader profile."""
+    bio = storage.get_profile()
+    if not bio or not bio.strip():
+        raise PipelineError(
+            "No profile set — add a bio on the Profile page first.", status=400
+        )
+    api_key = get_api_key()
+    return summarize_day(api_key, bio)
+
+
+def get_profile():
+    return storage.get_profile() or ""
+
+
+def save_profile(bio):
+    storage.save_profile(bio)
+    return bio

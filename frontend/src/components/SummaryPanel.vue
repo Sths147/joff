@@ -2,10 +2,10 @@
 import { ref } from 'vue'
 
 const props = defineProps<{
-  loading: 'fetch' | 'global' | 'thematic' | null
+  loading: 'fetch' | 'global' | 'thematic' | 'personalized' | null
   summaryHtml: string | null
 }>()
-const emit = defineEmits<{ global: []; thematic: [topic: string] }>()
+const emit = defineEmits<{ global: []; thematic: [topic: string]; personalized: [] }>()
 
 const topic = ref('')
 
@@ -27,6 +27,10 @@ function onThematicSubmit() {
         {{ props.loading === 'thematic' ? 'Summarizing…' : 'Thematic summary' }}
       </button>
     </form>
+
+    <button class="btn-outline" :disabled="props.loading !== null" @click="emit('personalized')">
+      {{ props.loading === 'personalized' ? 'Summarizing…' : 'Personalized summary' }}
+    </button>
   </section>
 
   <section v-if="summaryHtml" class="card summary-card">
