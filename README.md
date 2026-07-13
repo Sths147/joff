@@ -11,21 +11,52 @@ Get the latest updates of the french law with this personal summarizer of the fr
 ## Web app (Docker)
 
 ```bash
-cp backend/.env.example backend/.env   # fill in PISTE_CLIENT_ID/SECRET and MISTRAL_API_KEY
+cp backend/.env.example backend/.env
+# fill in PISTE_CLIENT_ID/SECRET, MISTRAL_API_KEY, and generate the three auth secrets:
+#   POSTGRES_PASSWORD, JWT_SECRET, CRON_TOKEN (openssl rand -hex 32 for the latter two)
 docker compose up --build
 ```
 
-- Frontend: http://localhost:5173
-- Backend API: http://localhost:5001
+- App: https://localhost (nginx serves the frontend and proxies the API on the same origin;
+  it terminates TLS with a self-signed certificate, so your browser will warn about it until a
+  real one is in place — accept the warning to continue)
 
-The page lets you fetch the latest JO, then get a global summary or a thematic summary for a
-topic you type in. See [ADR 0003](docs/adr/0003-python-backend-typescript-frontend.md),
-[ADR 0004](docs/adr/0004-synchronous-fetch-no-job-queue.md), and
-[ADR 0005](docs/adr/0005-no-auth-localhost-only.md) for the design decisions behind it — in
-particular, it's bound to localhost only and has no authentication.
+Every route requires an account — register on first visit. Each user gets their own profile
+("Profile" tab) used to personalize summaries; the JO data itself (fetched texts, vector index)
+is shared across all accounts. See [ADR 0003](docs/adr/0003-python-backend-typescript-frontend.md)
+and [ADR 0004](docs/adr/0004-synchronous-fetch-no-job-queue.md) for the design decisions behind
+the pipeline split, and [ADR 0005](docs/adr/0005-no-auth-localhost-only.md) for why this used to
+be unauthenticated/localhost-only and why that changed.
 
 `data/` and the embedding model cache are Docker volumes, so `docker compose up --build` after
-a code change doesn't re-fetch the JO or re-download the model.
+a code change doesn't re-fetch the JO or re-download the model. Accounts live in a `postgres`
+Docker volume; the JO cache and per-user profiles live in a `mongo` one.
+
+### Local dev (hot reload)
+
+Rebuilding the Docker images on every change is slow. For day-to-day frontend/backend work, run
+just the databases in Docker and the app directly on the host instead:
+
+```bash
+docker compose up mongo postgres   # only the databases; backend/frontend run on the host below
+
+cd backend
+export $(grep -v '^#' .env | xargs)   # backend reads its config from the environment, not .env directly
+flask --app app run --port 5001
+
+# in a second terminal
+cd frontend
+npm run dev
+```
+
+- App: http://localhost:5173 — Vite's dev server, which proxies `/jo`, `/profile`, `/auth` to the
+  backend on `localhost:5001` (see `frontend/vite.config.ts`) so the browser only ever talks to
+  one origin, same as nginx does in the Docker stack.
+- `JWT_SECRET` must be set (it's one of the three secrets `.env.example` asks you to generate) —
+  the backend raises on first login/register if it's missing.
+- `COOKIE_SECURE` defaults to `false`, so the session cookie works over this plain-HTTP setup
+  without extra config; the Docker stack overrides it to `true` since nginx always terminates TLS
+  there.
 
 ## CLI — fetching the JO via the Légifrance API (PISTE)
 
