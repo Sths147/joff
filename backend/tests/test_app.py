@@ -13,19 +13,35 @@ def client():
         yield client
 
 
-def test_post_latest_jo_success(client):
-    result = {"label": "JORF n0001", "texts": [{"id": "JORFTEXT1", "titre": "x", "nature": "LOI"}]}
-    with patch("app.fetch_latest_jo", return_value=result):
+def test_post_latest_jo_starts_a_job(client):
+    status = {
+        "status": "running",
+        "label": None,
+        "texts": None,
+        "error": None,
+        "started_at": 1.0,
+        "finished_at": None,
+    }
+    with patch("app.jobs.start_fetch_latest_jo", return_value=status) as mock_start:
         resp = client.post("/jo/latest")
+    assert resp.status_code == 202
+    assert resp.get_json() == status
+    mock_start.assert_called_once()
+
+
+def test_get_latest_jo_status_reports_the_job_state(client):
+    status = {
+        "status": "done",
+        "label": "JORF n0001",
+        "texts": [{"id": "JORFTEXT1", "titre": "x", "nature": "LOI"}],
+        "error": None,
+        "started_at": 1.0,
+        "finished_at": 2.0,
+    }
+    with patch("app.jobs.get_status", return_value=status):
+        resp = client.get("/jo/latest/status")
     assert resp.status_code == 200
-    assert resp.get_json() == result
-
-
-def test_post_latest_jo_upstream_error(client):
-    with patch("app.fetch_latest_jo", side_effect=PipelineError("upstream boom", status=502)):
-        resp = client.post("/jo/latest")
-    assert resp.status_code == 502
-    assert resp.get_json() == {"error": "upstream boom"}
+    assert resp.get_json() == status
 
 
 def test_get_summary_global_by_default(client):

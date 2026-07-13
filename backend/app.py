@@ -10,8 +10,9 @@ worth restricting origins over.
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
+import jobs
 from errors import PipelineError
-from pipeline import fetch_latest_jo, global_summary, thematic_summary
+from pipeline import global_summary, thematic_summary
 
 app = Flask(__name__)
 CORS(app)
@@ -24,7 +25,17 @@ def handle_pipeline_error(err):
 
 @app.post("/jo/latest")
 def post_latest_jo():
-    return jsonify(fetch_latest_jo())
+    """Start (or observe an already-running) fetch of the latest JO.
+
+    Returns immediately with the job's current status — see ADR 0006. Poll
+    GET /jo/latest/status for the result.
+    """
+    return jsonify(jobs.start_fetch_latest_jo()), 202
+
+
+@app.get("/jo/latest/status")
+def get_latest_jo_status():
+    return jsonify(jobs.get_status())
 
 
 @app.get("/jo/latest/summary")
