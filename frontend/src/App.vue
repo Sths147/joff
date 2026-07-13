@@ -1,14 +1,19 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import JoFetchPanel from './components/JoFetchPanel.vue'
 import JoTextList from './components/JoTextList.vue'
+import LoginView from './components/LoginView.vue'
 import ProfileView from './components/ProfileView.vue'
 import SummaryPanel from './components/SummaryPanel.vue'
 import ThemeToggle from './components/ThemeToggle.vue'
+import { useAuth } from './composables/useAuth'
 import { useJournalOfficiel } from './composables/useJournalOfficiel'
 
 type View = 'digest' | 'profile'
 const view = ref<View>('digest')
+
+const { email, checked, checkSession, logout } = useAuth()
+onMounted(checkSession)
 
 const {
   loading,
@@ -25,46 +30,56 @@ const {
 </script>
 
 <template>
-  <header class="masthead">
-    <div class="masthead-row">
-      <p class="eyebrow">République Française · Digest</p>
-      <ThemeToggle />
-    </div>
-    <h1>Journal Officiel</h1>
-    <nav class="tabs">
-      <button class="tab" :class="{ active: view === 'digest' }" @click="view = 'digest'">
-        Digest
-      </button>
-      <button class="tab" :class="{ active: view === 'profile' }" @click="view = 'profile'">
-        Profile
-      </button>
-    </nav>
-  </header>
+  <template v-if="!checked" />
 
-  <main v-if="view === 'digest'">
-    <JoFetchPanel
-      :fetching="loading === 'fetch'"
-      :disabled="loading !== null"
-      @fetch="fetchLatest"
-    />
+  <LoginView v-else-if="!email" />
 
-    <p v-if="error" class="error">{{ error }}</p>
+  <template v-else>
+    <header class="masthead">
+      <div class="masthead-row">
+        <p class="eyebrow">République Française · Digest</p>
+        <div class="masthead-actions">
+          <span class="user-email">{{ email }}</span>
+          <button class="btn-link" @click="logout">Log out</button>
+          <ThemeToggle />
+        </div>
+      </div>
+      <h1>Journal Officiel</h1>
+      <nav class="tabs">
+        <button class="tab" :class="{ active: view === 'digest' }" @click="view = 'digest'">
+          Digest
+        </button>
+        <button class="tab" :class="{ active: view === 'profile' }" @click="view = 'profile'">
+          Profile
+        </button>
+      </nav>
+    </header>
 
-    <template v-if="hasJo">
-      <JoTextList :label="label" :texts="texts" />
-      <SummaryPanel
-        :loading="loading"
-        :summary-html="summaryHtml"
-        @global="globalSummary"
-        @thematic="thematicSummary"
-        @personalized="personalizedSummary"
+    <main v-if="view === 'digest'">
+      <JoFetchPanel
+        :fetching="loading === 'fetch'"
+        :disabled="loading !== null"
+        @fetch="fetchLatest"
       />
-    </template>
-  </main>
 
-  <main v-else>
-    <ProfileView />
-  </main>
+      <p v-if="error" class="error">{{ error }}</p>
+
+      <template v-if="hasJo">
+        <JoTextList :label="label" :texts="texts" />
+        <SummaryPanel
+          :loading="loading"
+          :summary-html="summaryHtml"
+          @global="globalSummary"
+          @thematic="thematicSummary"
+          @personalized="personalizedSummary"
+        />
+      </template>
+    </main>
+
+    <main v-else>
+      <ProfileView />
+    </main>
+  </template>
 </template>
 
 <style scoped>
@@ -79,6 +94,27 @@ const {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 0.5rem;
+}
+
+.masthead-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.user-email {
+  font-size: 0.85rem;
+  color: var(--color-text-soft);
+}
+
+.btn-link {
+  border: none;
+  background: none;
+  color: var(--color-text-soft);
+  font-size: 0.85rem;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
 }
 
 .eyebrow {

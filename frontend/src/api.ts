@@ -1,14 +1,7 @@
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:5001'
-
 export interface JoText {
   id: string
   titre: string
   nature: string | null
-}
-
-export interface LatestJo {
-  label: string
-  texts: JoText[]
 }
 
 export interface FetchJobStatus {
@@ -18,13 +11,46 @@ export interface FetchJobStatus {
   error: string | null
 }
 
+export interface SessionUser {
+  email: string
+}
+
+// Dispatched whenever a request comes back 401, so auth state elsewhere (see
+// useAuth.ts) can reset without a hard reload.
+export const SESSION_EXPIRED_EVENT = 'joff-session-expired'
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const resp = await fetch(`${API_BASE}${path}`, init)
+  const resp = await fetch(path, init)
   if (!resp.ok) {
+    if (resp.status === 401) window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT))
     const body = await resp.json().catch(() => null)
     throw new Error(body?.error ?? `Request failed (${resp.status})`)
   }
   return resp.json() as Promise<T>
+}
+
+function postJson<T>(path: string, body: unknown): Promise<T> {
+  return request<T>(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export function register(email: string, password: string): Promise<SessionUser> {
+  return postJson('/auth/register', { email, password })
+}
+
+export function login(email: string, password: string): Promise<SessionUser> {
+  return postJson('/auth/login', { email, password })
+}
+
+export function logout(): Promise<{ ok: boolean }> {
+  return request('/auth/logout', { method: 'POST' })
+}
+
+export function currentUser(): Promise<SessionUser> {
+  return request('/auth/me')
 }
 
 // The fetch runs in the background on the server (see ADR 0006); this starts
