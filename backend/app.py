@@ -100,7 +100,7 @@ def get_latest_summary():
         min_score = request.args.get("min_score", default=0.83, type=float)
         summary = thematic_summary(topic, k, min_score)
     elif personalized:
-        summary = personalized_summary(g.user_id)
+        return jsonify({"topics": personalized_summary(g.user_id)})
     else:
         summary = global_summary()
     return jsonify({"summary": summary})

@@ -147,12 +147,13 @@ def test_get_summary_below_similarity_floor(client, auth_cookie):
 
 
 def test_get_summary_personalized_when_requested(client, auth_cookie):
+    topics = [{"title": "Santé", "facts": "...", "details": "..."}]
     with patch(
-        "app.personalized_summary", return_value="résumé personnalisé"
+        "app.personalized_summary", return_value=topics
     ) as mock_personalized, patch("app.global_summary") as mock_global:
         resp = client.get("/jo/latest/summary?personalized=1")
     assert resp.status_code == 200
-    assert resp.get_json() == {"summary": "résumé personnalisé"}
+    assert resp.get_json() == {"topics": topics}
     mock_personalized.assert_called_once_with("user-1")
     mock_global.assert_not_called()
 

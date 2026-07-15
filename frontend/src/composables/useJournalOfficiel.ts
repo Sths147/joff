@@ -11,6 +11,12 @@ import {
 
 type Loading = 'fetch' | 'global' | 'thematic' | 'personalized' | null
 
+export interface PersonalizedTopicHtml {
+  title: string
+  factsHtml: string
+  detailsHtml: string
+}
+
 const POLL_INTERVAL_MS = 2000
 
 function sleep(ms: number) {
@@ -25,6 +31,7 @@ export function useJournalOfficiel() {
   const texts = ref<JoText[]>([])
 
   const summaryHtml = ref<string | null>(null)
+  const personalizedTopics = ref<PersonalizedTopicHtml[] | null>(null)
 
   const hasJo = computed(() => texts.value.length > 0)
 
@@ -55,23 +62,39 @@ export function useJournalOfficiel() {
       label.value = result.label
       texts.value = result.texts
       summaryHtml.value = null
+      personalizedTopics.value = null
     }
   }
 
   async function globalSummary() {
     const result = await run('global', fetchGlobalSummary)
-    if (result) summaryHtml.value = await marked.parse(result.summary)
+    if (result) {
+      summaryHtml.value = await marked.parse(result.summary)
+      personalizedTopics.value = null
+    }
   }
 
   async function thematicSummary(topic: string) {
     if (!topic.trim()) return
     const result = await run('thematic', () => fetchThematicSummary(topic.trim()))
-    if (result) summaryHtml.value = await marked.parse(result.summary)
+    if (result) {
+      summaryHtml.value = await marked.parse(result.summary)
+      personalizedTopics.value = null
+    }
   }
 
   async function personalizedSummary() {
     const result = await run('personalized', fetchPersonalizedSummary)
-    if (result) summaryHtml.value = await marked.parse(result.summary)
+    if (result) {
+      personalizedTopics.value = await Promise.all(
+        result.topics.map(async (topic) => ({
+          title: topic.title,
+          factsHtml: await marked.parse(topic.facts),
+          detailsHtml: await marked.parse(topic.details),
+        })),
+      )
+      summaryHtml.value = null
+    }
   }
 
   return {
@@ -80,6 +103,7 @@ export function useJournalOfficiel() {
     label,
     texts,
     summaryHtml,
+    personalizedTopics,
     hasJo,
     fetchLatest,
     globalSummary,

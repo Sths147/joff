@@ -21,6 +21,7 @@ const {
   label,
   texts,
   summaryHtml,
+  personalizedTopics,
   hasJo,
   fetchLatest,
   globalSummary,
@@ -69,6 +70,7 @@ const {
         <SummaryPanel
           :loading="loading"
           :summary-html="summaryHtml"
+          :personalized-topics="personalizedTopics"
           @global="globalSummary"
           @thematic="thematicSummary"
           @personalized="personalizedSummary"

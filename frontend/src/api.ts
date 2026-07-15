@@ -15,6 +15,12 @@ export interface SessionUser {
   email: string
 }
 
+export interface PersonalizedTopic {
+  title: string
+  facts: string
+  details: string
+}
+
 // Dispatched whenever a request comes back 401, so auth state elsewhere (see
 // useAuth.ts) can reset without a hard reload.
 export const SESSION_EXPIRED_EVENT = 'joff-session-expired'
@@ -71,7 +77,7 @@ export function fetchThematicSummary(topic: string): Promise<{ summary: string }
   return request(`/jo/latest/summary?topic=${encodeURIComponent(topic)}`)
 }
 
-export function fetchPersonalizedSummary(): Promise<{ summary: string }> {
+export function fetchPersonalizedSummary(): Promise<{ topics: PersonalizedTopic[] }> {
   return request('/jo/latest/summary?personalized=1')
 }
 

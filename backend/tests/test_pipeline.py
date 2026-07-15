@@ -80,13 +80,14 @@ def test_fetch_latest_jo_fetches_and_stores_when_new():
 
 
 def test_personalized_summary_uses_saved_bio():
+    topics = [{"title": "Santé", "facts": "...", "details": "..."}]
     with patch("pipeline.storage.get_profile", return_value="Lawyer in Lyon") as mock_get, patch(
         "pipeline.get_api_key", return_value="key"
-    ), patch("pipeline.summarize_day", return_value="résumé") as mock_summarize:
+    ), patch("pipeline.summarize_personalized", return_value=topics) as mock_summarize:
         result = personalized_summary("user-1")
     mock_get.assert_called_once_with("user-1")
     mock_summarize.assert_called_once_with("key", "Lawyer in Lyon")
-    assert result == "résumé"
+    assert result == topics
 
 
 def test_personalized_summary_requires_a_profile():

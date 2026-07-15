@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import type { PersonalizedTopicHtml } from '../composables/useJournalOfficiel'
 
 const props = defineProps<{
   loading: 'fetch' | 'global' | 'thematic' | 'personalized' | null
   summaryHtml: string | null
+  personalizedTopics: PersonalizedTopicHtml[] | null
 }>()
 const emit = defineEmits<{ global: []; thematic: [topic: string]; personalized: [] }>()
 
@@ -38,6 +40,23 @@ function onThematicSubmit() {
       <h2>Summary</h2>
     </header>
     <div class="summary" v-html="summaryHtml"></div>
+  </section>
+
+  <section v-if="personalizedTopics" class="card summary-card">
+    <header class="card-header">
+      <h2>Summary</h2>
+    </header>
+    <ul v-if="personalizedTopics.length" class="topic-list">
+      <li v-for="(topic, i) in personalizedTopics" :key="i" class="topic">
+        <h3 class="topic-title">{{ topic.title }}</h3>
+        <div class="topic-facts" v-html="topic.factsHtml"></div>
+        <details class="topic-details">
+          <summary>More details</summary>
+          <div v-html="topic.detailsHtml"></div>
+        </details>
+      </li>
+    </ul>
+    <p v-else class="topic-empty">Nothing in this JO relates to your profile.</p>
   </section>
 </template>
 
@@ -151,5 +170,72 @@ function onThematicSubmit() {
 
 .summary :deep(strong) {
   color: var(--color-heading);
+}
+
+.topic-list {
+  list-style: none;
+  padding: 1.35rem;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.topic {
+  padding-bottom: 1.1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.topic:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.topic-title {
+  font-size: 1rem;
+  margin: 0 0 0.35rem;
+  color: var(--color-heading);
+}
+
+.topic-facts {
+  line-height: 1.6;
+}
+
+.topic-facts :deep(p) {
+  margin: 0.3rem 0;
+}
+
+.topic-details {
+  margin-top: 0.5rem;
+}
+
+.topic-details summary {
+  cursor: pointer;
+  color: var(--color-accent);
+  font-size: 0.9rem;
+  font-weight: 500;
+  width: fit-content;
+}
+
+.topic-details summary:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.topic-details > div {
+  margin-top: 0.6rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-soft, color-mix(in srgb, var(--color-surface) 92%, var(--color-text) 8%));
+  line-height: 1.6;
+}
+
+.topic-details > div :deep(p) {
+  margin: 0.3rem 0;
+}
+
+.topic-empty {
+  padding: 1.35rem;
+  color: var(--color-text-soft);
 }
 </style>

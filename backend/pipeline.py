@@ -22,7 +22,7 @@ from dl_journal import (
 )
 from errors import PipelineError
 from fetch_texts import fetch_all_texts
-from summarize import get_api_key, summarize_day, summarize_theme
+from summarize import get_api_key, summarize_day, summarize_personalized, summarize_theme
 from vectorize import build_index
 
 
@@ -67,14 +67,18 @@ def thematic_summary(topic, k=10, min_score=0.83):
 
 
 def personalized_summary(user_id):
-    """Global summary tailored to the reader profile saved for `user_id`."""
+    """Topics from the latest JO relevant to the reader profile saved for `user_id`.
+
+    Returns a list of {"title", "facts", "details"} dicts — see
+    summarize.summarize_personalized.
+    """
     bio = storage.get_profile(user_id)
     if not bio or not bio.strip():
         raise PipelineError(
             "No profile set — add a bio on the Profile page first.", status=400
         )
     api_key = get_api_key()
-    return summarize_day(api_key, bio)
+    return summarize_personalized(api_key, bio)
 
 
 def get_profile(user_id):
